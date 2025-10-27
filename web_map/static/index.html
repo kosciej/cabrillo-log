@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cabrillo Log Map</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 30px;
+        }
+        .upload-section {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .upload-form {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        input[type="file"] {
+            flex: 1;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        button {
+            padding: 10px 20px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        #map {
+            height: 600px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .loading {
+            text-align: center;
+            padding: 20px;
+            display: none;
+        }
+        .error {
+            background-color: #f8d7da;
+            color: #721c24;
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 10px;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Cabrillo Log Geographic Map</h1>
+
+        <div class="upload-section">
+            <form id="uploadForm" class="upload-form">
+                <input type="file" id="logFile" accept=".log,.txt" required>
+                <button type="submit" id="uploadBtn">Upload and Process Log</button>
+            </form>
+            <div id="error" class="error"></div>
+            <div id="loading" class="loading">Processing log file...</div>
+        </div>
+
+        <div id="map"></div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <script>
+        let map;
+
+        // Initialize map
+        function initMap() {
+            map = L.map('map').setView([20, 0], 2);
+
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap contributors'
+            }).addTo(map);
+        }
+
+        // Display markers on map
+        function displayMarkers(markers) {
+            markers.forEach(marker => {
+                const callsignsList = marker.callsigns.map(call => `• ${call}`).join('<br>');
+                const popupContent = `
+                    <strong>${marker.country}</strong><br>
+                    CQ Zone: ${marker.cq_zone}<br>
+                    ITU Zone: ${marker.itu_zone}<br>
+                    DXCC: ${marker.dxcc}<br>
+                    <br>
+                    <strong>Callsigns contacted:</strong><br>
+                    ${callsignsList}
+                `;
+
+                L.marker([marker.latitude, -marker.longitude])
+                    .bindPopup(popupContent)
+                    .addTo(map);
+            });
+
+            // Fit map to show all markers
+            if (markers.length > 0) {
+                const group = new L.featureGroup(markers.map(m => L.marker([m.latitude, -m.longitude])));
+                map.fitBounds(group.getBounds().pad(0.1));
+            }
+        }
+
+        // Handle form submission
+        document.getElementById('uploadForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const fileInput = document.getElementById('logFile');
+            const uploadBtn = document.getElementById('uploadBtn');
+            const loading = document.getElementById('loading');
+            const error = document.getElementById('error');
+
+            if (!fileInput.files[0]) {
+                error.textContent = 'Please select a log file.';
+                error.style.display = 'block';
+                return;
+            }
+
+            // Show loading state
+            uploadBtn.disabled = true;
+            uploadBtn.textContent = 'Processing...';
+            loading.style.display = 'block';
+            error.style.display = 'none';
+
+            const formData = new FormData();
+            formData.append('logfile', fileInput.files[0]);
+
+            try {
+                const response = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const markers = await response.json();
+                displayMarkers(markers);
+
+                // Reset form
+                fileInput.value = '';
+            } catch (err) {
+                error.textContent = `Error processing log: ${err.message}`;
+                error.style.display = 'block';
+            } finally {
+                uploadBtn.disabled = false;
+                uploadBtn.textContent = 'Upload and Process Log';
+                loading.style.display = 'none';
+            }
+        });
+
+        // Initialize map when page loads
+        initMap();
+    </script>
+</body>
+</html>

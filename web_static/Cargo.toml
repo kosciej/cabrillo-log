@@ -1,0 +1,44 @@
+[package]
+name = "web_static"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+yew = { version = "0.20", features = ["csr"] }
+wasm-bindgen = "0.2"
+web-sys = { version = "0.3", features = [
+  "console",
+  "Window",
+  "Document",
+  "Element",
+  "HtmlElement",
+  "EventTarget",
+  "Event",
+  "InputEvent",
+  "File",
+  "FileList",
+  "FileReader",
+  "Blob",
+  "FormData",
+  "Headers",
+  "Request",
+  "RequestInit",
+  "Response",
+  "ReadableStream",
+  "ReadableStreamDefaultReader",
+  "DomException",
+] }
+js-sys = "0.3"
+serde = { version = "1.0", features = ["derive"] }
+serde-wasm-bindgen = "0.6"
+console_error_panic_hook = "0.1"
+cabrillo-log = { path = "../cabrillo-log" }
+enricher = { path = "../enricher" }
+stats = { path = "../stats" }
+chrono = "0.4"
+
+[dependencies.wasm-bindgen-futures]
+version = "0.4"

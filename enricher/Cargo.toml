@@ -1,0 +1,15 @@
+[package]
+name = "enricher"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+phf = { version = "0.11", features = ["macros"] }
+
+[build-dependencies]
+phf_codegen = "0.11"
+reqwest = { version = "0.11", features = ["blocking"] }
+
+[[example]]
+name = "simple_prefix_match"
+path = "examples/simple_prefix_match.rs"

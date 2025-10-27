@@ -1,0 +1,3 @@
+[workspace]
+members = ["cabrillo-log", "enricher", "stats", "web_map", "web_static"]
+resolver = "3"
