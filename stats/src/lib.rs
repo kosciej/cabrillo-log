@@ -26,15 +26,32 @@
 //! println!("QSOs per band: {:?}", per_band);
 //! ```
 
+use chrono::{DateTime, Utc};
+#[cfg(feature = "sql")]
 use cabrillo_log::QSO;
-use chrono::{DateTime, NaiveDateTime, TimeZone, Utc};
+#[cfg(feature = "sql")]
+use chrono::{NaiveDateTime, TimeZone};
+#[cfg(feature = "sql")]
 use enricher::enrich_callsign;
+#[cfg(feature = "sql")]
 use gluesql::prelude::*;
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "sql")]
 use std::collections::HashMap;
+
+pub mod report;
 
 /// Map frequency string to ham radio band name
 pub fn frequency_to_band(freq_str: &str) -> String {
+    // VHF/UHF logs use band designators instead of frequencies
+    match freq_str {
+        "50" => return "6m".to_string(),
+        "70" => return "4m".to_string(),
+        "144" => return "2m".to_string(),
+        "432" => return "70cm".to_string(),
+        _ => {}
+    }
+
     // Parse frequency as float (MHz)
     let freq_khz = match freq_str.parse::<f64>() {
         Ok(f) => f,
@@ -84,6 +101,7 @@ impl std::fmt::Display for StatsError {
 
 impl std::error::Error for StatsError {}
 
+#[cfg(feature = "sql")]
 impl From<gluesql::prelude::Error> for StatsError {
     fn from(err: gluesql::prelude::Error) -> Self {
         StatsError::DatabaseError(err.to_string())
@@ -149,11 +167,13 @@ pub struct TimeSeriesPoint {
     pub count: u32,
 }
 
+#[cfg(feature = "sql")]
 /// Main statistics analyzer for QSO data.
 pub struct QsoStats {
     glue: Glue<MemoryStorage>,
 }
 
+#[cfg(feature = "sql")]
 impl QsoStats {
     /// Create a new QsoStats instance from a vector of QSOs.
     ///
@@ -602,7 +622,7 @@ impl QsoStats {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "sql"))]
 mod tests {
     use super::*;
     use cabrillo_log::QSO;

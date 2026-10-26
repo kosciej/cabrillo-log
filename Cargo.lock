@@ -696,7 +696,7 @@ dependencies = [
  "gloo-events",
  "gloo-utils",
  "serde",
- "serde-wasm-bindgen 0.5.0",
+ "serde-wasm-bindgen",
  "serde_urlencoded",
  "thiserror",
  "wasm-bindgen",
@@ -2032,17 +2032,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "serde-wasm-bindgen"
-version = "0.6.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8302e169f0eddcc139c70f139d19d6467353af16f9fce27e8c30158036a1e16b"
-dependencies = [
- "js-sys",
- "serde",
- "wasm-bindgen",
-]
-
-[[package]]
 name = "serde_core"
 version = "1.0.228"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2736,10 +2725,9 @@ dependencies = [
  "cabrillo-log",
  "chrono",
  "console_error_panic_hook",
- "enricher",
  "js-sys",
  "serde",
- "serde-wasm-bindgen 0.6.5",
+ "serde_json",
  "stats",
  "wasm-bindgen",
  "wasm-bindgen-futures",

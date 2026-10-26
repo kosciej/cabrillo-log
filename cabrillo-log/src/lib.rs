@@ -27,6 +27,17 @@ use std::fmt;
 pub struct CabrilloLog {
     pub headers: HashMap<String, String>,
     pub qsos: Vec<QSO>,
+    /// QSO lines that could not be parsed. One bad line doesn't reject the whole log.
+    pub skipped: Vec<SkippedLine>,
+}
+
+/// A QSO line that could not be parsed.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SkippedLine {
+    /// 1-based line number in the file.
+    pub line_number: usize,
+    pub text: String,
+    pub error: CabrilloError,
 }
 
 /// Represents a single QSO (contact) in the log.
@@ -107,10 +118,19 @@ impl CabrilloLog {
     pub fn parse(content: &str) -> Result<Self, CabrilloError> {
         let mut headers = HashMap::new();
         let mut qsos = Vec::new();
+        let mut skipped = Vec::new();
         let mut in_header = true;
 
-        for line in content.lines() {
+        for (number, line) in content.lines().enumerate() {
             let line = line.trim();
+            let mut push_qso = |line: &str| match Self::parse_qso_line(line) {
+                Ok(qso) => qsos.push(qso),
+                Err(error) => skipped.push(SkippedLine {
+                    line_number: number + 1,
+                    text: line.to_string(),
+                    error,
+                }),
+            };
             if line.is_empty() || line.starts_with('#') {
                 continue; // Skip empty lines and comments
             }
@@ -119,8 +139,7 @@ impl CabrilloLog {
             } else if in_header {
                 if line.starts_with("QSO:") {
                     in_header = false;
-                    let qso = Self::parse_qso_line(line)?;
-                    qsos.push(qso);
+                    push_qso(line);
                 } else if line.starts_with("X-QSO:") {
                     in_header = false;
                     // Ignore X-QSO
@@ -128,15 +147,18 @@ impl CabrilloLog {
                     headers.insert(key.trim().to_string(), value.trim().to_string());
                 }
             } else if line.starts_with("QSO:") {
-                let qso = Self::parse_qso_line(line)?;
-                qsos.push(qso);
+                push_qso(line);
             } else if line.starts_with("X-QSO:") {
                 // Ignore X-QSO lines as per spec
                 continue;
             }
         }
 
-        Ok(CabrilloLog { headers, qsos })
+        Ok(CabrilloLog {
+            headers,
+            qsos,
+            skipped,
+        })
     }
 
     /// Parse a Cabrillo log from a file.
@@ -161,46 +183,10 @@ impl CabrilloLog {
             .map_err(|_| CabrilloError::InvalidTime(parts[4].to_string()))?;
         let sent_call = parts[5].to_string();
 
-        // Find the received callsign (first valid callsign after sent_call)
-        let mut rcvd_call_index = 6;
-        while rcvd_call_index < parts.len() && !is_valid_callsign(parts[rcvd_call_index]) {
-            rcvd_call_index += 1;
-        }
-        if rcvd_call_index >= parts.len() {
-            return Err(CabrilloError::InvalidFormat(
-                "No valid received callsign found".to_string(),
-            ));
-        }
-        let rcvd_call = parts[rcvd_call_index].to_string();
-
-        let sent_rst_exch = if rcvd_call_index > 6 {
-            parts[6..rcvd_call_index].join(" ")
-        } else {
-            "".to_string()
+        let (sent_rst_exch, rcvd_call, rcvd_rst_exch, tx) = match split_symmetric(&parts[6..]) {
+            Some(fields) => fields,
+            None => split_by_callsign(&parts[6..])?,
         };
-
-        // Now, parse the received part
-        let rcvd_start = rcvd_call_index + 1;
-        if rcvd_start >= parts.len() {
-            return Err(CabrilloError::InvalidFormat(
-                "Missing received RST/EXCH".to_string(),
-            ));
-        }
-
-        let tx: Option<String>;
-        let rcvd_rst_exch: String;
-
-        if parts[parts.len() - 1] == "0" || parts[parts.len() - 1] == "1" {
-            tx = Some(parts[parts.len() - 1].to_string());
-            rcvd_rst_exch = if rcvd_start < parts.len() - 1 {
-                parts[rcvd_start..parts.len() - 1].join(" ")
-            } else {
-                "".to_string()
-            };
-        } else {
-            tx = None;
-            rcvd_rst_exch = parts[rcvd_start..].join(" ");
-        }
 
         Ok(QSO {
             freq,
@@ -209,7 +195,7 @@ impl CabrilloLog {
             time,
             sent_call,
             sent_rst_exch,
-            rcvd_call,
+            rcvd_call: rcvd_call.to_string(),
             rcvd_rst_exch,
             tx,
         })
@@ -255,6 +241,53 @@ impl CabrilloLog {
         }
         Ok(())
     }
+}
+
+type QsoFields<'a> = (String, &'a str, String, Option<String>);
+
+/// Split the part of a QSO line after the sent call, relying on the sent and
+/// received exchanges having the same number of tokens:
+/// `sent-exch (k) rcvd-call rcvd-exch (k) [tx]`. This keeps busted calls like
+/// "R6" and exchanges ending in "0" or "1" (e.g. CQ zone 1) intact.
+fn split_symmetric<'a>(rest: &[&'a str]) -> Option<QsoFields<'a>> {
+    let n = rest.len();
+    let (k, tx) = if n % 2 == 1 {
+        ((n - 1) / 2, None)
+    } else if n >= 2 && rest[n - 1].len() == 1 && rest[n - 1].chars().all(|c| c.is_ascii_digit()) {
+        ((n - 2) / 2, Some(rest[n - 1].to_string()))
+    } else {
+        return None;
+    };
+    let call = rest[k];
+    let looks_like_call = call.is_ascii()
+        && call.chars().any(|c| c.is_ascii_alphabetic())
+        && call.chars().any(|c| c.is_ascii_digit())
+        && call.chars().all(|c| c.is_ascii_alphanumeric() || c == '/');
+    looks_like_call.then(|| (rest[..k].join(" "), call, rest[k + 1..k + 1 + k].join(" "), tx))
+}
+
+/// Fallback for lines whose exchanges differ in length: take the first token
+/// that looks like a callsign as the received call.
+fn split_by_callsign<'a>(rest: &[&'a str]) -> Result<QsoFields<'a>, CabrilloError> {
+    let index = rest
+        .iter()
+        .position(|p| is_valid_callsign(p))
+        .ok_or_else(|| CabrilloError::InvalidFormat("No valid received callsign found".to_string()))?;
+    let mut rcvd = &rest[index + 1..];
+    if rcvd.is_empty() {
+        return Err(CabrilloError::InvalidFormat(
+            "Missing received RST/EXCH".to_string(),
+        ));
+    }
+    let mut tx = None;
+    if let Some(last) = rcvd.last()
+        && (*last == "0" || *last == "1")
+        && rcvd.len() > index
+    {
+        tx = Some(last.to_string());
+        rcvd = &rcvd[..rcvd.len() - 1];
+    }
+    Ok((rest[..index].join(" "), rest[index], rcvd.join(" "), tx))
 }
 
 /// Check if a string is a valid amateur radio callsign (basic check).
@@ -359,6 +392,39 @@ mod tests {
         let log = CabrilloLog::parse(content).unwrap();
         assert_eq!(log.qsos[0].sent_rst_exch, "599 001");
         assert_eq!(log.qsos[0].tx, Some("1".to_string()));
+    }
+
+    #[test]
+    fn test_zone_one_is_not_tx() {
+        let content = "QSO: 21367 PH 2025-10-25 0002 8P5A 59 8 KL7KK 59 1\n";
+        let log = CabrilloLog::parse(content).unwrap();
+        assert_eq!(log.qsos[0].rcvd_rst_exch, "59 1");
+        assert_eq!(log.qsos[0].tx, None);
+    }
+
+    #[test]
+    fn test_short_busted_call() {
+        let content = "QSO: 7006 CW 2025-11-29 1520 LN8W 599 14 R6 599 16\n";
+        let log = CabrilloLog::parse(content).unwrap();
+        assert_eq!(log.qsos[0].rcvd_call, "R6");
+        assert_eq!(log.qsos[0].rcvd_rst_exch, "599 16");
+    }
+
+    #[test]
+    fn test_bad_line_is_skipped() {
+        let content = "QSO: 7006 CW 2025-11-29 1520 LN8W 599 14 W1AW 599 5\nQSO: 7006 CW 2025-13-29 1521 LN8W 599 14 W1AW 599 5\n";
+        let log = CabrilloLog::parse(content).unwrap();
+        assert_eq!(log.qsos.len(), 1);
+        assert_eq!(log.skipped.len(), 1);
+        assert_eq!(log.skipped[0].line_number, 2);
+    }
+
+    #[test]
+    fn test_tx_between_exchanges_falls_back() {
+        let content = "QSO: 14000 CW 2023-10-01 1200 N1MM 599 001 0 W1AW 599 001\n";
+        let log = CabrilloLog::parse(content).unwrap();
+        assert_eq!(log.qsos[0].rcvd_call, "W1AW");
+        assert_eq!(log.qsos[0].sent_rst_exch, "599 001 0");
     }
 
     #[test]
