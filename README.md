@@ -56,3 +56,7 @@ This will:
 1. Build the WASM package for development
 2. Copy the HTML file
 3. Start a development server at http://localhost:8000
+
+## License
+
+This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
