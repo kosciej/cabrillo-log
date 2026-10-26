@@ -1,9 +1,12 @@
 mod charts;
 mod common;
+mod export;
 mod map;
+mod report_doc;
 mod views;
 
 use common::{Data, Focus};
+use export::ExportKind;
 use stats::report::{ContestLog, Report, ReportFilter};
 use std::rc::Rc;
 use views::{Callsigns, Geography, LogView, Overview, Rates};
@@ -92,6 +95,7 @@ fn app() -> Html {
     let error = use_state(String::new);
     let dragging = use_state(|| false);
     let file_name = use_state(String::new);
+    let exporting = use_state(|| None::<ExportKind>);
 
     // Follow the URL hash, so back/forward and shared links pick the tab.
     {
@@ -218,6 +222,31 @@ fn app() -> Html {
                 Callback::from(move |_| focus.set(None))
             };
 
+            let export_button = |kind: ExportKind, label: &str, title: &str| {
+                let (data, filter, exporting) = (data.clone(), (*filter).clone(), exporting.clone());
+                let busy = *exporting == Some(kind);
+                let disabled = exporting.is_some();
+                let onclick = Callback::from(move |_| {
+                    let (data, filter, exporting) = (data.clone(), filter.clone(), exporting.clone());
+                    exporting.set(Some(kind));
+                    wasm_bindgen_futures::spawn_local(async move {
+                        export::export(data, filter, kind).await;
+                        exporting.set(None);
+                    });
+                });
+                html! {
+                    <button class="export" {onclick} {disabled} title={title.to_string()}>
+                        { if busy { "Preparing…" } else { label } }
+                    </button>
+                }
+            };
+            let exports = html! {
+                <div class="exports">
+                    { export_button(ExportKind::Html, "HTML", "Download the report for the current filter as a standalone HTML file") }
+                    { export_button(ExportKind::Pdf, "PDF", "Print the report for the current filter, or save it as PDF") }
+                </div>
+            };
+
             let view = match *tab {
                 Tab::Overview => html! { <Overview data={data} /> },
                 Tab::Rates => html! { <Rates data={data} /> },
@@ -230,6 +259,7 @@ fn app() -> Html {
                 <div ondrop={on_drop.clone()} ondragover={on_drag_over.clone()}>
                     <nav class="nav">
                         <div class="nav-inner">
+                            <div class="nav-row">
                             <div class="tabs" role="tablist">
                                 { for TABS.iter().map(|(t, h, label)| {
                                     let tab_state = tab.clone();
@@ -244,6 +274,8 @@ fn app() -> Html {
                                             class={classes!("tab", (*tab == t).then_some("active"))} {onclick}>{ *label }</a>
                                     }
                                 }) }
+                            </div>
+                            { exports }
                             </div>
                             <FilterBar log={Loaded(log)} filter={(*filter).clone()} on_change={{
                                 let filter = filter.clone();

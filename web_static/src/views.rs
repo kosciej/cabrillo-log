@@ -247,8 +247,7 @@ pub fn rates(p: &ViewProps) -> Html {
                         </tr></thead>
                         <tbody>
                             { for r.hours.iter().map(|h| {
-                                let mults: Vec<String> = h.new_dxcc.iter().map(|c| c.to_string())
-                                    .chain(h.new_zones.iter().map(|z| format!("zone {}", z))).collect();
+                                let (mults, all_mults) = new_mults_text(h);
                                 html! {
                                     <tr class={classes!("clickable", (h.total == 0).then_some("idle"))} onclick={d.focus(Focus::Hour(h.start))}>
                                         <td class="nowrap">{ h.start.format("%a %H:00").to_string() }</td>
@@ -256,7 +255,7 @@ pub fn rates(p: &ViewProps) -> Html {
                                         <td class="num strong">{ h.total }</td>
                                         <td class="num">{ h.cumulative }</td>
                                         if has_run { <td class="num">{ if h.total > 0 { pct(h.run, h.total) } else { String::new() } }</td> }
-                                        <td class="mults">{ mults.join(", ") }</td>
+                                        <td class="mults" title={all_mults}>{ mults }</td>
                                     </tr>
                                 }
                             }) }

@@ -134,6 +134,25 @@ pub fn thousands(n: u64) -> String {
     out
 }
 
+/// New multipliers worked in an hour: names when there are a few, counts
+/// otherwise (the first hours of a contest bring dozens). Returns (text, full list).
+pub fn new_mults_text(h: &stats::report::HourRow) -> (String, String) {
+    let names: Vec<String> = h.new_dxcc.iter().map(|c| c.to_string())
+        .chain(h.new_zones.iter().map(|z| format!("zone {}", z))).collect();
+    let full = names.join(", ");
+    if names.len() <= 6 {
+        return (full.clone(), full);
+    }
+    let mut parts = Vec::new();
+    if !h.new_dxcc.is_empty() {
+        parts.push(format!("{} DXCC", h.new_dxcc.len()));
+    }
+    if !h.new_zones.is_empty() {
+        parts.push(format!("{} zones", h.new_zones.len()));
+    }
+    (parts.join(" + "), full)
+}
+
 pub fn pct(part: u32, whole: u32) -> String {
     if whole == 0 {
         "–".into()

@@ -94,7 +94,16 @@
         /* Navigation */
         .nav { position: sticky; top: 0; z-index: 1000; background: var(--surface); border-bottom: 1px solid var(--border); }
         .nav-inner { max-width: 1200px; margin: 0 auto; padding: 0 16px; }
-        .tabs { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
+        .nav-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+        .exports { display: flex; gap: 6px; flex-shrink: 0; }
+        .export {
+            border: 1px solid var(--border); background: var(--surface); border-radius: 6px;
+            padding: 3px 10px; cursor: pointer; font-size: 13px; color: var(--ink-2);
+        }
+        .export:hover:not(:disabled) { background: var(--surface-2); color: var(--ink); }
+        .export:disabled { cursor: progress; opacity: .6; }
+        .export::before { content: "↓ "; }
+        .tabs { display: flex; min-width: 0; gap: 4px; overflow-x: auto; scrollbar-width: none; }
         .tab {
             padding: 10px 12px; color: var(--ink-2); text-decoration: none; white-space: nowrap;
             border-bottom: 2px solid transparent; font-weight: 500;
@@ -119,7 +128,7 @@
         .card h2 { margin: 0; font-size: 16px; }
         .card h3 { margin: 16px 0 6px; font-size: 14px; color: var(--ink-2); }
         .card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-        .two-col { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
+        .two-col { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; align-items: start; }
         .search {
             padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px;
             background: var(--page); color: var(--ink); font: inherit; min-width: 200px;
@@ -272,6 +281,35 @@
                 },
             };
         })();
+    </script>
+    <script>
+        // Report exports used from Rust (see src/export.rs).
+        window.cabrilloExport = {
+            download(html, fileName) {
+                const url = URL.createObjectURL(new Blob([html], { type: "text/html" }));
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = fileName;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                setTimeout(() => URL.revokeObjectURL(url), 10000);
+            },
+            print(html) {
+                const frame = document.createElement("iframe");
+                frame.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0";
+                frame.onload = () => {
+                    // give fonts and layout a moment before printing
+                    setTimeout(() => {
+                        frame.contentWindow.focus();
+                        frame.contentWindow.print();
+                        setTimeout(() => frame.remove(), 1000);
+                    }, 200);
+                };
+                frame.srcdoc = html;
+                document.body.appendChild(frame);
+            },
+        };
     </script>
     <script type="module">
         import init from './web_static.js';
